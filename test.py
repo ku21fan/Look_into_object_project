@@ -19,7 +19,6 @@ import pdb
 
 def parse_args():
     parser = argparse.ArgumentParser(description='dcl parameters')
-    parser.add_argument('--exp_name', default='tmp', type=str)
     parser.add_argument('--data', dest='dataset', default='CUB', type=str)
     parser.add_argument('--backbone', dest='backbone', default='resnet50', type=str)
     parser.add_argument('--b', dest='batch_size', default=128, type=int)
@@ -91,9 +90,10 @@ if __name__ == '__main__':
                                            'top1_test': sub_test[0], 'top2_test': sub_test[1], 'top3_test': sub_test[2],
                                            'label': sub_label}
     
-    os.makedirs(f'results/{args.exp_name}', exist_ok=True)
+    folder_name = args.resume.split('/')[-2]
+    os.makedirs(f'results/{folder_name}', exist_ok=True)
     file_base_name = args.resume.split('/')[-1]
-    torch.save(result_gather, f'results/{args.exp_name}/result_gather_{file_base_name}.pt')
+    torch.save(result_gather, f'results/{folder_name}/result_gather_{file_base_name}.pt')
 
     count_bar.close()
 
@@ -105,7 +105,7 @@ if __name__ == '__main__':
 
     cls_top1, cls_top3, cls_count = cls_base_acc(result_gather)
 
-    acc_report_io = open(f'results/{args.exp_name}/acc_report_{file_base_name}.json', 'w')
+    acc_report_io = open(f'results/{folder_name}/acc_report_{file_base_name}.json', 'w')
     json.dump({'test_acc1': test_acc1,
                'test_acc2': test_acc2,
                'test_acc3': test_acc3,

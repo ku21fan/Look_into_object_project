@@ -65,7 +65,7 @@ class LoadConfig(object):
                                          sep=" ",
                                          header=None,
                                          names=['ImageName', 'label'])
-
-        self.exp_name = f'./saved_models/{args.dataset}_{args.exp_name}'
-        os.makedirs(self.exp_name, exist_ok=True)
+        if version == 'train':
+            self.exp_name = f'./saved_models/{args.dataset}_{args.exp_name}_seed{args.seed}'
+            os.makedirs(self.exp_name, exist_ok=True)
         self.backbone = args.backbone

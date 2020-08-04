@@ -13,13 +13,12 @@ from config import LoadConfig, load_data_transformers
 from dataset import collate_fn, dataset
 from utils import LossRecord, eval_turn
 
-import pdb
+from pdb import set_trace as bp
 
 
 def train(Config,
           model,
           epoch_num,
-          start_epoch,
           optimizer,
           exp_lr_scheduler,
           data_loader,
@@ -36,10 +35,8 @@ def train(Config,
 
     start_time = time.time()
     model.train()
-    for epoch in range(start_epoch, epoch_num - 1):
-        # exp_lr_scheduler.step(epoch)
-
-        save_grad = []
+    epoch = 0 
+    while(epoch < epoch_num):
         for step, data in enumerate(data_loader['train']):
             inputs, labels, img_names = data
             inputs = inputs.cuda()
@@ -56,15 +53,18 @@ def train(Config,
 
             if step % 100 == 0:
                 elapsed_time = int(time.time() - start_time)
-                train_log = f'epoch: {epoch} / {epoch_num} step: {step:-8d} / {train_epoch_step:d} loss: {loss.detach().item():6.4f} lr: {current_lr:0.8f} elapsed_time: {elapsed_time}'
+                train_log = f'epoch: {epoch} / {epoch_num} step: {step:-5d} / {train_epoch_step:d} loss: {loss.detach().item():6.4f} lr: {current_lr:0.8f} elapsed_time: {elapsed_time}'
                 print(train_log)
                 with open(os.path.join(Config.exp_name, f'log.txt'), 'a') as log_file:
                     log_file.write(train_log + '\n')
             rec_loss.append(loss.detach().item())
             train_loss_recorder.update(loss.detach().item())
 
+        epoch += 1
+
         # evaluation & save
-        if epoch % save_per_epoch == 0:
+        # To see training progress, we also conduct evaluation when 'epoch == 1'
+        if epoch % save_per_epoch == 0 or epoch == 1:
             rec_loss = []
             print(80 * '-')
             print(f'epoch: {epoch} step: {step:d} / {train_epoch_step:d} global_step: {1.0 * step / train_epoch_step:8.2f} train_epoch: {epoch:04d} train_loss: {train_loss_recorder.get_val():6.4f}')
@@ -72,9 +72,10 @@ def train(Config,
             test_acc1, test_acc2, test_acc3 = eval_turn(Config, model, data_loader['test'], 'test', epoch)
             model.train()
 
-            save_path = os.path.join(Config.exp_name, f'weights_{epoch}_{test_acc1:0.4f}_{test_acc3:0.4f}.pth')
-            torch.save(model.state_dict(), save_path)
-            print(f'saved model to {save_path}')
+            if epoch != 1:
+              save_path = os.path.join(Config.exp_name, f'weights_{epoch}_{test_acc1:0.4f}_{test_acc3:0.4f}.pth')
+              torch.save(model.state_dict(), save_path)
+              print(f'saved model to {save_path}')
 
 
 def parse_args():
@@ -85,7 +86,6 @@ def parse_args():
     parser.add_argument('--save', dest='resume', default=None, type=str, help='path to saved model')
     parser.add_argument('--epoch', dest='epoch', default=50, type=int)
     parser.add_argument('--spe', dest='save_per_epoch', default=5, type=int)
-    parser.add_argument('--start_epoch', dest='start_epoch', default=0,  type=int)
     parser.add_argument('--tb', dest='train_batch', default=16, type=int)
     parser.add_argument('--testb', dest='test_batch', default=128, type=int)
     parser.add_argument('--tnw', dest='train_num_workers', default=4, type=int)
@@ -110,6 +110,8 @@ if __name__ == '__main__':
     args = parse_args()
     print(args)
     Config = LoadConfig(args, 'train')
+    with open(os.path.join(Config.exp_name, f'log.txt'), 'a') as log_file:
+        log_file.write(str(args) + '\n')
 
     """ Seed and GPU setting """
     random.seed(args.seed)
@@ -168,14 +170,13 @@ if __name__ == '__main__':
     step_up_size = len(dataloader['train']) * args.epoch / 2
     step_down_size = len(dataloader['train']) * args.epoch / 2
     scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=args.base_lr, max_lr=args.base_lr * 10,
-                                      step_size_up=step_up_size, step_size_down=step_down_size,
-                                      cycle_momentum=False)
+                                                  step_size_up=step_up_size, step_size_down=step_down_size,
+                                                  cycle_momentum=False)
 
     # train entry
     train(Config,
           model,
           epoch_num=args.epoch,
-          start_epoch=args.start_epoch,
           optimizer=optimizer,
           exp_lr_scheduler=scheduler,
           data_loader=dataloader,
