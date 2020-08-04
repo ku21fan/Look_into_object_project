@@ -9,9 +9,9 @@ import torch.backends.cudnn as cudnn
 import torchvision.transforms as transforms
 
 from LookIntoObject import Model
-from config import LoadConfig, load_data_transformers
+from config import LoadConfig
 from dataset import collate_fn, dataset
-from utils import LossRecord, eval_turn
+from utils import LossRecord, eval_turn, load_data_transformers
 
 from pdb import set_trace as bp
 
@@ -198,7 +198,7 @@ if __name__ == '__main__':
     print('train from imagenet pretrained models...')
     model = Model(Config)
     model = torch.nn.DataParallel(model).cuda()
-    print(model)
+    # print(model)
     with open(os.path.join(Config.exp_name, 'log.txt'), 'a') as log_file:
         log_file.write(repr(model) + '\n')
 

@@ -4,6 +4,32 @@ import datetime
 
 import numpy as np
 import torch
+import torchvision.transforms as transforms
+
+
+def load_data_transformers(resize_reso=512, crop_reso=448):
+    Normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    data_transforms = {
+        'common_aug': transforms.Compose([
+            transforms.Resize((resize_reso, resize_reso)),
+            transforms.RandomRotation(degrees=15),
+            transforms.RandomCrop((crop_reso, crop_reso)),
+            transforms.RandomHorizontalFlip(),
+        ]),
+        'train_totensor': transforms.Compose([
+            transforms.Resize((crop_reso, crop_reso)),
+            transforms.ToTensor(),
+            Normalize,
+        ]),
+        'test_totensor': transforms.Compose([
+            transforms.Resize((resize_reso, resize_reso)),
+            transforms.CenterCrop((crop_reso, crop_reso)),
+            transforms.ToTensor(),
+            Normalize,
+        ]),
+        'None': None,
+    }
+    return data_transforms
 
 
 class LossRecord(object):

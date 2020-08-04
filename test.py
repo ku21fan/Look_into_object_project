@@ -11,8 +11,8 @@ import torchvision.transforms as transforms
 
 from LookIntoObject import Model
 from dataset import collate_fn, dataset
-from config import LoadConfig, load_data_transformers
-from utils import cls_base_acc
+from config import LoadConfig
+from utils import cls_base_acc, load_data_transformers
 
 import pdb
 

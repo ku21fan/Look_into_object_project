@@ -23,10 +23,10 @@ class Model(nn.Module):
         self.maxpool_for_featuremap_7x7 = nn.MaxPool2d(2, 2)
         if is_train and (Config.module == 'OEL' or Config.module == 'SCL' or Config.module == 'LIO'):
             # added BN to avoid Nan loss, added ReLu to make <0 value to zero.
-            self.OEL_mask_small_m = nn.Sequential(nn.Conv2d(2048, 1, 1, 1), nn.BatchNorm2d(1), nn.ReLU(True)) 
+            self.OEL_mask_small_m = nn.Sequential(nn.Conv2d(2048, 1, 1, 1), nn.BatchNorm2d(1), nn.ReLU(True))
 
         if is_train and (Config.module == 'SCL' or Config.module == 'LIO'):
-            self.SCL_conv = nn.Sequential(nn.Conv2d(2048, 512, 1, 1), nn.BatchNorm2d(512), nn.ReLU(True))
+            self.SCL_conv = nn.Sequential(nn.Conv2d(2048, 512, 1, 1), nn.ReLU(True))
             self.SCL_fc = nn.Sequential(nn.Linear(512 * 2, 2), nn.ReLU(True))
 
     def forward(self, x, is_train=True):
@@ -157,7 +157,6 @@ def get_SCL_loss(pred, gt, mask):
     gt_dis, gt_angle = gt[:, 0, :, :], gt[:, 1, :, :]
 
     # calculate mean_angle first
-    mean_angle_numerate_sum = 0
     N, _, I, J = mask.size()
 
     # Seems like if mask elements < 0, the loss gonna be NaN!
@@ -165,6 +164,7 @@ def get_SCL_loss(pred, gt, mask):
     mask_sum = torch.sum(mask, dim=(2, 3))  # [N, 1, H, W] -> [N, 1] # denominator of equation (7), (8)
     mask_sum = mask_sum.squeeze(1)
 
+    mean_angle_numerate_sum = 0
     angle_for_mean = torch.zeros(N, I, J).cuda()
     for i in range(I):
         for j in range(J):
@@ -175,7 +175,7 @@ def get_SCL_loss(pred, gt, mask):
             angle_for_mean[sub_lessthan_zero, i, j] = 1 + sub[sub < 0]
             mean_angle_numerate_sum += mask[:, 0, i, j] * angle_for_mean[:, i, j]
 
-    mean_angle = mean_angle_numerate_sum / mask_sum
+    mean_angle = mean_angle_numerate_sum / (mask_sum + 1e-6)
 
     # calculate loss_dis (relative distance) and loss_angle (polar angle)
     dis_numerator_sum = 0
@@ -196,8 +196,7 @@ def get_SCL_loss(pred, gt, mask):
 
     loss_dis = torch.sqrt((dis_numerator_sum + 1e-6) / (mask_sum + 1e-6))
     loss_angle = torch.sqrt((angle_numerator_sum + 1e-6) / (mask_sum + 1e-6))
-    print(mask_sum, dis_numerator_sum, angle_numerator_sum)
-
+    
     loss_dis = torch.sum(loss_dis, dim=0)
     loss_angle = torch.sum(loss_angle, dim=0)
 
