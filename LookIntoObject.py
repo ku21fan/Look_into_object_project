@@ -80,15 +80,16 @@ class Model(nn.Module):
         """ make SCL gt with R0_index """
         scl_gt = torch.zeros((N, 2, H, W)).cuda()
         R0_index = R0_index.float()
-        for batch_idx in range(N):
-            y = R0_index[batch_idx] // W
-            x = R0_index[batch_idx] % W
+        y = R0_index // W
+        x = R0_index % W
+        y = y.squeeze(1) # [N, 1] -> [N]
+        x = x.squeeze(1)
 
-            for i in range(W):
-                for j in range(H):
-                    # equation (5) in paper.
-                    scl_gt[batch_idx, 0, i, j] = torch.sqrt((x - i)**2 + (y - j)**2) / (2**(1 / 2) * N)
-                    scl_gt[batch_idx, 1, i, j] = (torch.atan2(y - j, x - i) + np.pi) / (2 * np.pi)
+        for i in range(W):
+            for j in range(H):
+                # equation (5) in paper.
+                scl_gt[:, 0, i, j] = torch.sqrt((x - i)**2 + (y - j)**2) / (2**(1 / 2) * N)
+                scl_gt[:, 1, i, j] = (torch.atan2(y - j, x - i) + np.pi) / (2 * np.pi)
 
         scl_polar_coordinate = {}
         scl_polar_coordinate['gt'] = scl_gt
@@ -147,56 +148,61 @@ def OEL_make_pseudo_mask(model, image_list, label_list, positive_image_list, pos
     return pseudo_mask_list
 
 
-def get_SCL_loss(pred_list, gt_list, mask_list):
+# def get_SCL_loss(pred_list, gt_list, mask_list):
+def get_SCL_loss(pred, gt, mask):
 
-    loss_dis_list = []
-    loss_angle_list = []
-    for pred, gt, mask in zip(pred_list, gt_list, mask_list):
+    pred_dis, pred_angle = pred[:, 0, :, :], pred[:, 1, :, :]
+    gt_dis, gt_angle = gt[:, 0, :, :], gt[:, 1, :, :]
 
-        pred_dis, pred_angle = pred
-        gt_dis, gt_angle = gt
+    # calculate mean_angle first
+    mean_angle_numerate_sum = 0
+    N, _, I, J = mask.size()
 
-        # calculate mean_angle first
-        mean_angle_numerate_sum = 0
-        _, I, J = mask.size()
+    # Seems like if mask elements < 0, the loss gonna be NaN! 
+    # find hint from here https://discuss.pytorch.org/t/getting-nan-after-first-iteration-with-custom-loss/25929/12
+    mask_clone = mask.clone() # to solve inplace error
+    mask_clone[mask < 0] = 0 
+    mask[mask < 0] = 0
+    mask = mask_clone.detach()
+    mask_sum = torch.sum(mask, dim=(2, 3))  # [N, 1, H, W] -> [N, 1] # denominator of equation (7), (8)
+    mask_sum = mask_sum.squeeze(1)
 
-        # Seems like if mask elements < 0, the loss gonna be NaN! 
-        # find hint from here https://discuss.pytorch.org/t/getting-nan-after-first-iteration-with-custom-loss/25929/12
-        mask_clone = mask.clone() # to solve inplace error
-        mask_clone[mask < 0] = 0 
-        mask[mask < 0] = 0
-        mask = mask_clone.detach()
-        mask_sum = torch.sum(mask, dim=(1, 2))  # [1, H, W] -> [1] # denominator of equation (7), (8)
+    angle_for_mean = torch.zeros(N, I, J).cuda()
+    for i in range(I):
+        for j in range(J):
+            sub = pred_angle[:, i, j] - gt_angle[:, i, j]
+            sub_morethan_zero = sub >= 0
+            sub_lessthan_zero = sub < 0
+            angle_for_mean[sub_morethan_zero, i, j] = sub[sub >= 0]
+            angle_for_mean[sub_lessthan_zero, i, j] = 1 + sub[sub<0]
+            mean_angle_numerate_sum += mask[:, 0, i, j] * angle_for_mean[:, i, j]
 
-        for i in range(I):
-            for j in range(J):
-                angle = (pred_angle[i, j] - gt_angle[i, j]) if pred_angle[i, j] - \
-                    gt_angle[i, j] >= 0 else (1 + pred_angle[i, j] - gt_angle[i, j])
-                mean_angle_numerate_sum += mask[0, i, j] * angle
+    mean_angle = mean_angle_numerate_sum / mask_sum
+    
+    # calculate loss_dis (relative distance) and loss_angle (polar angle)
+    dis_numerator_sum = 0
+    angle_numerator_sum = 0
+    angle = torch.zeros(N, I, J).cuda()
+    for i in range(I):
+        for j in range(J):
+            # for numerator equation (7) in the paper
+            dis_numerator_sum += mask[:, 0, i, j] * (pred_dis[:, i, j] - gt_dis[:, i, j])**2
 
-        mean_angle = mean_angle_numerate_sum / mask_sum
+            # for numerator equation (8) in the paper
+            sub = pred_angle[:, i, j] - gt_angle[:, i, j]
+            sub_morethan_zero = sub >= 0
+            sub_lessthan_zero = sub < 0
+            angle[sub_morethan_zero, i, j] = sub[sub >= 0]
+            angle[sub_lessthan_zero, i, j] = 1 + sub[sub<0]
+            angle_numerator_sum += mask[:, 0, i, j] * (angle[:, i, j] - mean_angle)**2
 
-        # calculate loss_dis (relative distance) and loss_angle (polar angle)
-        dis_numerator_sum = 0
-        angle_numerator_sum = 0
-        for i in range(I):
-            for j in range(J):
-                # for numerator equation (7) in the paper
-                dis_numerator_sum += mask[0, i, j] * (pred_dis[i, j] - gt_dis[i, j])**2
+    loss_dis = torch.sqrt(dis_numerator_sum / mask_sum)
+    loss_angle = torch.sqrt(angle_numerator_sum / mask_sum)
+    # print(mask_sum, dis_numerator_sum, angle_numerator_sum)
 
-                # for numerator equation (8) in the paper
-                if pred_angle[i, j] - gt_angle[i, j] >= 0:
-                    angle = (pred_angle[i, j] - gt_angle[i, j])
-                else:
-                    angle = (1 + pred_angle[i, j] - gt_angle[i, j])
-                angle_numerator_sum += mask[0, i, j] * (angle - mean_angle)**2
 
-        loss_dis_list.append(torch.sqrt(dis_numerator_sum / mask_sum))
-        loss_angle_list.append(torch.sqrt(angle_numerator_sum / mask_sum))
-        # print(mask_sum, dis_numerator_sum, angle_numerator_sum)
-
-    loss_dis = torch.sum(torch.stack(loss_dis_list, dim=0), dim=0)
-    loss_angle = torch.sum(torch.stack(loss_angle_list, dim=0), dim=0)
+    loss_dis = torch.sum(loss_dis, dim=0)
+    loss_angle = torch.sum(loss_angle, dim=0)
 
     # equation (9) in the paper
     loss = loss_dis + loss_angle
