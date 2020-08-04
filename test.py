@@ -1,27 +1,18 @@
-# coding=utf-8
 import os
 import json
-import csv
 import argparse
 import numpy as np
 from math import ceil
 from tqdm import tqdm
-import pickle
-import shutil
 
 import torch
-import torch.nn as nn
-from torch.autograd import Variable
-from torch.nn import CrossEntropyLoss
-from torchvision import datasets, models
 import torch.backends.cudnn as cudnn
-import torch.nn.functional as F
 import torchvision.transforms as transforms
 
 from Model import MainModel
 from dataset import collate_fn, dataset
 from config import LoadConfig, load_data_transformers
-from utils import set_text, save_multi_img, cls_base_acc
+from utils import cls_base_acc
 
 import pdb
 
@@ -42,7 +33,7 @@ def parse_args():
 
 if __name__ == '__main__':
     if torch.cuda.device_count() > 1:
-        print('For my setting, check GPU number, you should be missed CUDA_VISIBLE_DEVICES=0 or typo')
+        print('For my setting, only use 1 GPU so it should be missed CUDA_VISIBLE_DEVICES=0 or typo' )
         sys.exit()
 
     args = parse_args()
@@ -52,7 +43,7 @@ if __name__ == '__main__':
     data_set = dataset(Config,
                        anno=Config.test_anno,
                        totensor=transformers['test_totensor'],
-                       test=True)
+                       is_train=False)
 
     dataloader = torch.utils.data.DataLoader(data_set,
                                              batch_size=args.batch_size,
@@ -65,7 +56,7 @@ if __name__ == '__main__':
     cudnn.benchmark = True
 
     model = MainModel(Config)
-    model = nn.DataParallel(model).cuda()
+    model = torch.nn.DataParallel(model).cuda()
     model.load_state_dict(torch.load(args.resume))
     
     model.eval()

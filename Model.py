@@ -1,11 +1,6 @@
 import numpy as np
-from torch import nn
-import torch
-from torchvision import models, transforms, datasets
-import torch.nn.functional as F
+import torch.nn as nn
 import pretrainedmodels
-
-from config import pretrained_model
 
 import pdb
 
