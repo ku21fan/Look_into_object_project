@@ -22,10 +22,11 @@ class Model(nn.Module):
 
         self.maxpool_for_featuremap_7x7 = nn.MaxPool2d(2, 2)
         if is_train and (Config.module == 'OEL' or Config.module == 'SCL' or Config.module == 'LIO'):
-            self.OEL_mask_small_m = nn.Conv2d(2048, 1, 1, 1)
+            # added BN to avoid Nan loss, added ReLu to make <0 value to zero.
+            self.OEL_mask_small_m = nn.Sequential(nn.Conv2d(2048, 1, 1, 1), nn.BatchNorm2d(1), nn.ReLU(True)) 
 
         if is_train and (Config.module == 'SCL' or Config.module == 'LIO'):
-            self.SCL_conv = nn.Sequential(nn.Conv2d(2048, 512, 1, 1), nn.ReLU(True))
+            self.SCL_conv = nn.Sequential(nn.Conv2d(2048, 512, 1, 1), nn.BatchNorm2d(512), nn.ReLU(True))
             self.SCL_fc = nn.Sequential(nn.Linear(512 * 2, 2), nn.ReLU(True))
 
     def forward(self, x, is_train=True):
@@ -82,7 +83,7 @@ class Model(nn.Module):
         R0_index = R0_index.float()
         y = R0_index // W
         x = R0_index % W
-        y = y.squeeze(1) # [N, 1] -> [N]
+        y = y.squeeze(1)  # [N, 1] -> [N]
         x = x.squeeze(1)
 
         for i in range(W):
@@ -101,6 +102,7 @@ class Model(nn.Module):
 def OEL_make_pseudo_mask(model, image_list, label_list, positive_image_list, positive_image_number=3):
 
     # label 별 positive image 필요 = 미리셋을 만들어두고, label에 맞는 것을 샘플링 해와야겟네?!
+    # 시간을 아끼기 위해서, batch 단위로 계산하게끔 바꿔야할 수 있음.
     model.eval()
     pseudo_mask_list = []
     with torch.no_grad():
@@ -127,7 +129,7 @@ def OEL_make_pseudo_mask(model, image_list, label_list, positive_image_list, pos
             for pos_img_index in range(positive_image_number):
                 phi = []
                 for image_feat in torch.unbind(image_featuremap_1D, 1):
-                    print(positive_image_featuremap_1D[pos_img_index])  # [C, 49]
+                    print(positive_image_featuremap_1D[pos_img_index], positive_image_featuremap_1D[pos_img_index].size())  # [C, 49]
                     # positive_images_feat_49 = torch.unbind(positive_image_featuremap_1D[pos_img_index], 1) <-- 요거 없어도 될듯?
                     # feature_dot_product = torch.dot(image_feat, positive_images_feat_49) # [C, 1] x [C, 49] = [49]
                     feature_dot_product = torch.dot(image_feat, positive_image_featuremap_1D[
@@ -158,12 +160,8 @@ def get_SCL_loss(pred, gt, mask):
     mean_angle_numerate_sum = 0
     N, _, I, J = mask.size()
 
-    # Seems like if mask elements < 0, the loss gonna be NaN! 
+    # Seems like if mask elements < 0, the loss gonna be NaN!
     # find hint from here https://discuss.pytorch.org/t/getting-nan-after-first-iteration-with-custom-loss/25929/12
-    mask_clone = mask.clone() # to solve inplace error
-    mask_clone[mask < 0] = 0 
-    mask[mask < 0] = 0
-    mask = mask_clone.detach()
     mask_sum = torch.sum(mask, dim=(2, 3))  # [N, 1, H, W] -> [N, 1] # denominator of equation (7), (8)
     mask_sum = mask_sum.squeeze(1)
 
@@ -174,11 +172,11 @@ def get_SCL_loss(pred, gt, mask):
             sub_morethan_zero = sub >= 0
             sub_lessthan_zero = sub < 0
             angle_for_mean[sub_morethan_zero, i, j] = sub[sub >= 0]
-            angle_for_mean[sub_lessthan_zero, i, j] = 1 + sub[sub<0]
+            angle_for_mean[sub_lessthan_zero, i, j] = 1 + sub[sub < 0]
             mean_angle_numerate_sum += mask[:, 0, i, j] * angle_for_mean[:, i, j]
 
     mean_angle = mean_angle_numerate_sum / mask_sum
-    
+
     # calculate loss_dis (relative distance) and loss_angle (polar angle)
     dis_numerator_sum = 0
     angle_numerator_sum = 0
@@ -193,13 +191,12 @@ def get_SCL_loss(pred, gt, mask):
             sub_morethan_zero = sub >= 0
             sub_lessthan_zero = sub < 0
             angle[sub_morethan_zero, i, j] = sub[sub >= 0]
-            angle[sub_lessthan_zero, i, j] = 1 + sub[sub<0]
+            angle[sub_lessthan_zero, i, j] = 1 + sub[sub < 0]
             angle_numerator_sum += mask[:, 0, i, j] * (angle[:, i, j] - mean_angle)**2
 
-    loss_dis = torch.sqrt(dis_numerator_sum / mask_sum)
-    loss_angle = torch.sqrt(angle_numerator_sum / mask_sum)
-    # print(mask_sum, dis_numerator_sum, angle_numerator_sum)
-
+    loss_dis = torch.sqrt((dis_numerator_sum + 1e-6) / (mask_sum + 1e-6))
+    loss_angle = torch.sqrt((angle_numerator_sum + 1e-6) / (mask_sum + 1e-6))
+    print(mask_sum, dis_numerator_sum, angle_numerator_sum)
 
     loss_dis = torch.sum(loss_dis, dim=0)
     loss_angle = torch.sum(loss_angle, dim=0)

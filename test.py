@@ -18,15 +18,16 @@ import pdb
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='dcl parameters')
+    parser = argparse.ArgumentParser(description='parameters')
     parser.add_argument('--data', dest='dataset', default='CUB', type=str)
-    parser.add_argument('--backbone', dest='backbone', default='resnet50', type=str)
     parser.add_argument('--b', dest='batch_size', default=128, type=int)
     parser.add_argument('--nw', dest='num_workers', default=4, type=int)
     parser.add_argument('--ver', dest='version', default='test', type=str)
-    parser.add_argument('--save', dest='resume', default=None, type=str)
+    parser.add_argument('--save', dest='resume', default=None, type=str, help='path to saved model')
     parser.add_argument('--size', dest='resize_resolution', default=512, type=int)
     parser.add_argument('--crop', dest='crop_resolution', default=448, type=int)
+    parser.add_argument('--backbone', dest='backbone', default='resnet50', type=str)
+    # model
     parser.add_argument('--mo', dest='module', default='onlyCLS', type=str,
                         help='|Look-into-Object (LIO)|Object Extent Learning (OEL)|Spatial Context Learning (SCL)|')
     args = parser.parse_args()

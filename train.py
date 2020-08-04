@@ -34,7 +34,7 @@ def train(Config,
     if Config.module == 'LIO' or Config.module == 'OEL' or Config.module == 'SCL':
         from LookIntoObject import OEL_make_pseudo_mask, get_SCL_loss
         get_OEL_loss = torch.nn.MSELoss()
-        
+
     start_time = time.time()
     model.train()
     epoch = 0
@@ -83,7 +83,15 @@ def train(Config,
 
             if step % 100 == 0:
                 elapsed_time = int(time.time() - start_time)
-                train_log = f'epoch: {epoch} / {epoch_num} step: {step:-5d} / {train_epoch_step:d} loss: {loss.detach().item():6.4f} lr: {current_lr:0.8f} elapsed_time: {elapsed_time}'
+                if Config.module == 'LIO':
+                    train_log = f'epoch: {epoch} / {epoch_num} step: {step:-5d} / {train_epoch_step:d} loss: {loss.detach().item():6.4f}, OEL_loss: {OEL_loss.detach().item():6.4f}, SCL_loss: {SCL_loss.detach().item():6.4f} lr: {current_lr:0.8f} elapsed_time: {elapsed_time}'
+                elif Config.module == 'OEL':
+                    train_log = f'epoch: {epoch} / {epoch_num} step: {step:-5d} / {train_epoch_step:d} loss: {loss.detach().item():6.4f}, OEL_loss: {OEL_loss.detach().item():6.4f} lr: {current_lr:0.8f} elapsed_time: {elapsed_time}'
+                elif Config.module == 'SCL':
+                    train_log = f'epoch: {epoch} / {epoch_num} step: {step:-5d} / {train_epoch_step:d} loss: {loss.detach().item():6.4f}, SCL_loss: {SCL_loss.detach().item():6.4f} lr: {current_lr:0.8f} elapsed_time: {elapsed_time}'
+                else:
+                    train_log = f'epoch: {epoch} / {epoch_num} step: {step:-5d} / {train_epoch_step:d} loss: {loss.detach().item():6.4f} lr: {current_lr:0.8f} elapsed_time: {elapsed_time}'
+
                 print(train_log)
                 with open(os.path.join(Config.exp_name, 'log.txt'), 'a') as log_file:
                     log_file.write(train_log + '\n')
