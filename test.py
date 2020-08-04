@@ -9,7 +9,7 @@ import torch
 import torch.backends.cudnn as cudnn
 import torchvision.transforms as transforms
 
-from Model import MainModel
+from LookIntoObject import Model
 from dataset import collate_fn, dataset
 from config import LoadConfig, load_data_transformers
 from utils import cls_base_acc
@@ -27,6 +27,8 @@ def parse_args():
     parser.add_argument('--save', dest='resume', default=None, type=str)
     parser.add_argument('--size', dest='resize_resolution', default=512, type=int)
     parser.add_argument('--crop', dest='crop_resolution', default=448, type=int)
+    parser.add_argument('--mo', dest='module', default='onlyCLS', type=str,
+                        help='|Look-into-Object (LIO)|Object Extent Learning (OEL)|Spatial Context Learning (SCL)|')
     args = parser.parse_args()
     return args
 
@@ -54,7 +56,7 @@ if __name__ == '__main__':
 
     cudnn.benchmark = True
 
-    model = MainModel(Config)
+    model = Model(Config, is_train=False)
     model = torch.nn.DataParallel(model).cuda()
     model.load_state_dict(torch.load(args.resume))
     
@@ -72,7 +74,7 @@ if __name__ == '__main__':
             inputs = inputs.cuda()
             labels = torch.from_numpy(np.array(labels)).long().cuda()
 
-            outputs = model(inputs)
+            outputs = model(inputs, is_train=False)
             outputs_pred = outputs
 
             top3_test, top3_pos = torch.topk(outputs_pred, 3)

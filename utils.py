@@ -92,7 +92,7 @@ def eval_turn(Config, model, data_loader, val_version, epoch_num):
         for step, data_val in enumerate(data_loader):
             inputs = data_val[0].cuda()
             labels = torch.from_numpy(np.array(data_val[1])).long().cuda()
-            outputs = model(inputs)
+            outputs = model(inputs, is_train=False)
 
             loss = get_ce_loss(outputs, labels).item()
             val_loss_recorder.update(loss)
@@ -121,7 +121,7 @@ def eval_turn(Config, model, data_loader, val_version, epoch_num):
         test_log = '% 3d %s %s %s-loss: %.4f ||%s-acc@1: %.1f %s-acc@2: %.1f %s-acc@3: %.1f ||time: %d' % (epoch_num, val_version, dt(), val_version,
                                                                                                            val_loss_recorder.get_val(init=True), val_version, val_acc1, val_version, val_acc2, val_version, val_acc3, since)
         print(test_log)
-        with open(os.path.join(Config.exp_name, f'log.txt'), 'a') as log_file:
+        with open(os.path.join(Config.exp_name, 'log.txt'), 'a') as log_file:
             log_file.write(test_log + '\n')
         print('-' * 80)
 
