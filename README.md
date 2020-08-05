@@ -1,5 +1,5 @@
 # Look_into_object_project [Blog link](https://www.notion.so/Look-into-Object-Self-supervised-Structure-Modeling-for-Object-Recognition-826021bdb7ce4969a92c157f0e0acfbe)
-This is unofficial pytorch implementation of [Look_into_object paper](https://openaccess.thecvf.com/content_CVPR_2020/html/Zhou_Look-Into-Object_Self-Supervised_Structure_Modeling_for_Object_Recognition_CVPR_2020_paper.html). <br>
+This is unofficial pytorch implementation of [Look_into_object paper (CVPR2020)](https://openaccess.thecvf.com/content_CVPR_2020/html/Zhou_Look-Into-Object_Self-Supervised_Structure_Modeling_for_Object_Recognition_CVPR_2020_paper.html). <br>
 This repository is created for the Visual Media class of UTokyo (as my class report). <br>
 Check the [blog](https://www.notion.so/Look-into-Object-Self-supervised-Structure-Modeling-for-Object-Recognition-826021bdb7ce4969a92c157f0e0acfbe) for details.
 
