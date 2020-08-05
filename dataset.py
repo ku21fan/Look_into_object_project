@@ -53,8 +53,8 @@ class dataset(data.Dataset):
         for imgpath, label in zip(imgpath_list, label_list):
             imgpath = os.path.join(self.root_path, imgpath)
             img = self.pil_loader(imgpath)
-            if self.is_train:
-                img = self.common_aug(img) if not self.common_aug is None else img
+            # if self.is_train:
+            #     img = self.common_aug(img) if not self.common_aug is None else img
             img = self.totensor(img)
             label = label - 1
             positive_image_list[label].append(img)

@@ -67,6 +67,7 @@ class Model(nn.Module):
         2) find argmax coordinate for each mask.
         3) then change back change 1D coordinates (h*w) -> 2D (h, w).
         """
+        # equation (6) in the paper
         N, C, H, W = mask.size()
         mask_1D = mask.view(N, C, H * W)  # C = 1
         _, R0_index = torch.max(mask_1D, dim=2)  # [N]
