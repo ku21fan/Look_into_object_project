@@ -11,6 +11,7 @@ requirements: numpy, pillow, torchvision, tqdm, pretrainedmodels, pandas
 ```
 pip install numpy pillow torchvision tqdm pretrainedmodels pandas 
 ```
+Follow [DCL repository's instruction](https://github.com/JDAI-CV/DCL#datasets-prepare) to download and prepare datasets; [CUB](http://www.vision.caltech.edu/visipedia/CUB-200-2011.html), [STCAR(=CAR)](https://ai.stanford.edu/~jkrause/cars/car_dataset.html), and [AIR](http://www.robots.ox.ac.uk/~vgg/data/fgvc-aircraft/).
 
 ## Train
 Train Look Into Object (LIO) module
