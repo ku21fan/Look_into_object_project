@@ -7,7 +7,6 @@ from tqdm import tqdm
 
 import torch
 import torch.backends.cudnn as cudnn
-import torchvision.transforms as transforms
 
 from LookIntoObject import Model
 from dataset import collate_fn, dataset

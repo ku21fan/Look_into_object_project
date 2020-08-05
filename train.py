@@ -6,7 +6,6 @@ import random
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-import torchvision.transforms as transforms
 
 from LookIntoObject import Model
 from config import LoadConfig
@@ -21,6 +20,7 @@ def train(Config,
           epoch_num,
           optimizer,
           exp_lr_scheduler,
+          dataset,
           data_loader,
           data_size=448,
           save_per_epoch=5
@@ -34,6 +34,7 @@ def train(Config,
     if Config.module == 'LIO' or Config.module == 'OEL' or Config.module == 'SCL':
         from LookIntoObject import OEL_make_pseudo_mask, get_SCL_loss
         get_OEL_loss = torch.nn.MSELoss()
+        positive_image_list = dataset.positive_image_list
 
     start_time = time.time()
     model.train()
@@ -45,29 +46,25 @@ def train(Config,
             labels = torch.from_numpy(np.array(labels)).cuda()
 
             if Config.module == 'LIO':
-                outputs, oel_mask, scl_polar_coordinate = model(inputs)
+                outputs, featuremap_7x7, oel_mask, scl_polar_coordinate = model(inputs)
                 cls_loss = get_cls_loss(outputs, labels)
-
-                pseudo_mask = OEL_make_pseudo_mask(model, inputs, labels, positive_images)
+                pseudo_mask = OEL_make_pseudo_mask(model, featuremap_7x7.detach(), labels, positive_image_list)
                 OEL_loss = get_OEL_loss(oel_mask, pseudo_mask)
-
                 SCL_loss = get_SCL_loss(scl_polar_coordinate['pred'], scl_polar_coordinate['gt'], oel_mask.detach())
 
                 # equation (10) in the paper.
                 loss = cls_loss + 0.1 * OEL_loss + 0.1 * SCL_loss
 
             elif Config.module == 'OEL':
-                outputs, oel_mask = model(inputs)
+                outputs, featuremap_7x7, oel_mask = model(inputs)
                 cls_loss = get_cls_loss(outputs, labels)
-
-                pseudo_mask = OEL_make_pseudo_mask(model, inputs, labels, positive_images)
+                pseudo_mask = OEL_make_pseudo_mask(model, featuremap_7x7.detach(), labels, positive_image_list)
                 OEL_loss = get_OEL_loss(oel_mask, pseudo_mask)
                 loss = cls_loss + 0.1 * OEL_loss
 
             elif Config.module == 'SCL':
-                outputs, oel_mask, scl_polar_coordinate = model(inputs)
+                outputs, featuremap_7x7, oel_mask, scl_polar_coordinate = model(inputs)
                 cls_loss = get_cls_loss(outputs, labels)
-
                 SCL_loss = get_SCL_loss(scl_polar_coordinate['pred'], scl_polar_coordinate['gt'], oel_mask.detach())
                 loss = cls_loss + 0.1 * SCL_loss
 
@@ -219,6 +216,7 @@ if __name__ == '__main__':
           epoch_num=args.epoch,
           optimizer=optimizer,
           exp_lr_scheduler=scheduler,
+          dataset=train_set,
           data_loader=dataloader,
           data_size=args.crop_resolution,
           save_per_epoch=args.save_per_epoch)

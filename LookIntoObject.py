@@ -22,14 +22,18 @@ class Model(nn.Module):
 
         self.maxpool_for_featuremap_7x7 = nn.MaxPool2d(2, 2)
         if is_train and (Config.module == 'OEL' or Config.module == 'SCL' or Config.module == 'LIO'):
-            # added BN to avoid Nan loss, added ReLu to make <0 value to zero.
+            # To avoid Nan loss, added ReLu to make <0 value into zero.
+            # To stablize the SCL loss, added BN.
             self.OEL_mask_small_m = nn.Sequential(nn.Conv2d(2048, 1, 1, 1), nn.BatchNorm2d(1), nn.ReLU(True))
 
         if is_train and (Config.module == 'SCL' or Config.module == 'LIO'):
             self.SCL_conv = nn.Sequential(nn.Conv2d(2048, 512, 1, 1), nn.ReLU(True))
             self.SCL_fc = nn.Sequential(nn.Linear(512 * 2, 2), nn.ReLU(True))
 
-    def forward(self, x, is_train=True):
+    def forward(self, x, is_train=True, get_featuremap_7x7=False):
+        if get_featuremap_7x7:
+            return self.get_featuremap_7x7(x)
+
         common_feature = self.model(x)
 
         # classification backbone
@@ -41,14 +45,19 @@ class Model(nn.Module):
             featuremap_7x7 = self.maxpool_for_featuremap_7x7(common_feature)
             oel_mask = self.OEL_mask_small_m(featuremap_7x7)
             scl_polar_coordinate = self.SCL(featuremap_7x7, oel_mask.detach())
-            return cls_prediction, oel_mask, scl_polar_coordinate
+            return cls_prediction, featuremap_7x7, oel_mask, scl_polar_coordinate
 
         elif is_train and self.module == 'OEL':
             featuremap_7x7 = self.maxpool_for_featuremap_7x7(common_feature)
             oel_mask = self.OEL_mask_small_m(featuremap_7x7)
-            return cls_prediction, oel_mask
+            return cls_prediction, featuremap_7x7, oel_mask
 
         return cls_prediction
+
+    def get_featuremap_7x7(self, x):
+        common_feature = self.model(x)
+        featuremap_7x7 = self.maxpool_for_featuremap_7x7(common_feature)
+        return featuremap_7x7
 
     def SCL(self, featuremap, mask):
         featuremap_h = self.SCL_conv(featuremap)  # N, C, H, W
@@ -99,55 +108,56 @@ class Model(nn.Module):
         return scl_polar_coordinate
 
 
-def OEL_make_pseudo_mask(model, image_list, label_list, positive_image_list, positive_image_number=3):
+def OEL_make_pseudo_mask(model, featuremap_7x7, label_list, positive_image_list, positive_image_number=3):
 
-    # label 별 positive image 필요 = 미리셋을 만들어두고, label에 맞는 것을 샘플링 해와야겟네?!
-    # 시간을 아끼기 위해서, batch 단위로 계산하게끔 바꿔야할 수 있음.
     model.eval()
-    pseudo_mask_list = []
+    # select positive images
+    sampled_positive_image_list = []
+    for label in label_list:
+        sampled_positive_image = torch.stack(random.sample(
+            positive_image_list[label.item()], positive_image_number), dim=0)
+        sampled_positive_image_list.append(sampled_positive_image)
+
+    print(len(sampled_positive_image_list))
+    # N * [positive_image_number, C, H, W] -> [N*positive_image_number, C, H, W]
+    positive_images = torch.cat(sampled_positive_image_list, dim=0)
+    print('pi', positive_images.size())
+
     with torch.no_grad():
-        for image, label in zip(image_list, label_list):
-            image_featuremap_14x14 = model.model(image)
-            image_featuremap_7x7 = model.maxpool_for_featuremap_7x7(image_featuremap_14x14)
+        """ 
+        1) change 2D coordinates (h, w) -> 1D (h*w).
+        2) calculate in each coordinates.
+        3) then change back change 1D coordinates (h*w) -> 2D (h, w).
+        """
+        N, C, H, W = featuremap_7x7.size()
+        featuremap_7x7_1D = featuremap_7x7.view(N, C, H * W)
+        print('featuremap_7x7', featuremap_7x7.size(), featuremap_7x7_1D.size())
 
-            positive_images = random.sample(positive_image_list[label], positive_image_number)
-            positive_image_featuremap_14x14 = model.model(positive_images)
-            positive_image_featuremap_7x7 = model.maxpool_for_featuremap_7x7(positive_image_featuremap_14x14)
+        # To use for loop, change [N*positive_image_number, C, H, W] -> [positive_image_number, N, C, H, W]
+        positive_image_featuremap_7x7 = model(positive_images, get_featuremap_7x7=True)
+        positive_image_featuremap_7x7 = positive_image_featuremap_7x7.unsqueeze(
+            0).view(positive_image_number, N, C, H, W)
+        print(positive_image_featuremap_7x7, positive_image_featuremap_7x7.size())
 
-            """ 
-            1) change 2D coordinates (h, w) -> 1D (h*w).
-            2) calculate in each coordinates.
-            3) then change back change 1D coordinates (h*w) -> 2D (h, w).
-            """
-            N, C, H, W = image_featuremap_7x7.size()
-            image_featuremap_1D = image_featuremap_7x7.view(N, C, H * W)  # N = 1
-            image_featuremap_1D.squeeze(0)
+        phi = []
+        for pos_img_7x7 in positive_image_featuremap_7x7:
+            bp()
+            pos_img_7x7_1D = pos_img_7x7.view(N, C, H * W)
+            print('pos7x7', pos_img_7x7_1D.size(), pos_img_7x7.size())
 
-            positive_image_featuremap_1D = positive_image_featuremap_7x7.view(N, C, H * W)  # N = 3
+            # equation (2) in the paper
+            # matmul ([N, H*W, C], [N, C, H*W]) = [N, H*W, H*W]
+            dot_product = torch.bmm(featuremap_7x7_1D, pos_img_7x7_1D)
+            phi.append(torch.max(dot_product, dim=2)[0] / C)  # [N, H*W]
+            print('dot, phi', dot_product.size(), torch.max(dot_product, dim=2)[0].size())
 
-            phi_list = []
-            for pos_img_index in range(positive_image_number):
-                phi = []
-                for image_feat in torch.unbind(image_featuremap_1D, 1):
-                    print(positive_image_featuremap_1D[pos_img_index], positive_image_featuremap_1D[pos_img_index].size())  # [C, 49]
-                    # positive_images_feat_49 = torch.unbind(positive_image_featuremap_1D[pos_img_index], 1) <-- 요거 없어도 될듯?
-                    # feature_dot_product = torch.dot(image_feat, positive_images_feat_49) # [C, 1] x [C, 49] = [49]
-                    feature_dot_product = torch.dot(image_feat, positive_image_featuremap_1D[
-                                                    pos_img_index])  # [C, 1] x [C, 49] = [49]
-                    phi.append(torch.max(feature_dot_product)[0] / C)
+        # equation (3) in the paper
+        phi_1D = torch.mean(torch.cat(phi, dim=0), dim=0)  # [N, H*W]
+        pseudo_mask = torch.view(phi_1D, (H, W))  # [N, H, W]
+        print('phi1D, pseudo_mask', phi_1D.size(), pseudo_mask.size())
 
-                phi_1D = torch.cat(phi, dim=0)
-                phi_2D = torch.view(phi, (H, W))
-                phi_list.append(phi_2D)
-
-            phi_list = torch.stack(phi_list, dim=0)
-            pseudo_mask = torch.mean(phi_list, dim=0)
-            pseudo_mask_list.append(pseudo_mask)
-
-    pseudo_mask_list = torch.cat(pseudo_mask_list, dim=0)
     model.train()
-
-    return pseudo_mask_list
+    return pseudo_mask
 
 
 # def get_SCL_loss(pred_list, gt_list, mask_list):
@@ -175,7 +185,7 @@ def get_SCL_loss(pred, gt, mask):
             angle_for_mean[sub_lessthan_zero, i, j] = 1 + sub[sub < 0]
             mean_angle_numerate_sum += mask[:, 0, i, j] * angle_for_mean[:, i, j]
 
-    mean_angle = mean_angle_numerate_sum / (mask_sum + 1e-6)
+    mean_angle = (mean_angle_numerate_sum + 1e-6) / (mask_sum + 1e-6)
 
     # calculate loss_dis (relative distance) and loss_angle (polar angle)
     dis_numerator_sum = 0
@@ -196,7 +206,7 @@ def get_SCL_loss(pred, gt, mask):
 
     loss_dis = torch.sqrt((dis_numerator_sum + 1e-6) / (mask_sum + 1e-6))
     loss_angle = torch.sqrt((angle_numerator_sum + 1e-6) / (mask_sum + 1e-6))
-    
+
     loss_dis = torch.sum(loss_dis, dim=0)
     loss_angle = torch.sum(loss_angle, dim=0)
 
