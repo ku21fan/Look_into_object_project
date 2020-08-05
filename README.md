@@ -47,4 +47,4 @@ CUDA_VISIBLE_DEVICES=2 python test.py --data AIR --save saved_models/[path-to-tr
 ```
 
 ## Acknowledgement
-We borrowed some codes from [DCL repository](https://github.com/JDAI-CV/DCL)
+We borrowed some codes from [DCL repository](https://github.com/JDAI-CV/DCL).
