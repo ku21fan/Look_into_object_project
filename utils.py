@@ -103,7 +103,6 @@ def eval_turn(Config, model, data_loader, val_version, epoch_num):
     val_corrects1 = 0
     val_corrects2 = 0
     val_corrects3 = 0
-    val_size = data_loader.__len__()
     item_count = data_loader.total_item_len
     t0 = time.time()
     get_ce_loss = torch.nn.CrossEntropyLoss()

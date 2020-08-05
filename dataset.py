@@ -1,3 +1,4 @@
+import time
 import os
 import torch
 import random
@@ -43,10 +44,9 @@ class dataset(data.Dataset):
                 return img.convert('RGB')
 
     def get_positive_images(self, imgpath_list, label_list):
-        # for OEL, we get positive_images first. it takes some minutes (2~3 min)!
-        positive_image_list = {}
-        import time
+        # For OEL module, we load and store positive_images. It takes some minutes (2~4 min)!
         start = time.time()
+        positive_image_list = {}
         for i in range(self.numcls):
             positive_image_list[i] = []
         
@@ -58,7 +58,7 @@ class dataset(data.Dataset):
             img = self.totensor(img)
             label = label - 1
             positive_image_list[label].append(img)
-        print('time check', time.time() - start)
+        print('Time check for positive_image_list load and store:', time.time() - start)
 
         return positive_image_list
 

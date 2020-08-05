@@ -10,7 +10,7 @@ import torch.backends.cudnn as cudnn
 from LookIntoObject import Model
 from config import LoadConfig
 from dataset import collate_fn, dataset
-from utils import LossRecord, eval_turn, load_data_transformers
+from utils import eval_turn, load_data_transformers
 
 from pdb import set_trace as bp
 
@@ -25,16 +25,15 @@ def train(Config,
           data_size=448,
           save_per_epoch=5
           ):
-    rec_loss = []
-    train_batch_size = data_loader['train'].batch_size
     train_epoch_step = data_loader['train'].__len__()
-    train_loss_recorder = LossRecord(train_batch_size)
-
+    
+    # set loss function and positive image list for OEL
     get_cls_loss = torch.nn.CrossEntropyLoss()
     if Config.module == 'LIO' or Config.module == 'OEL' or Config.module == 'SCL':
         from LookIntoObject import OEL_make_pseudo_mask, get_SCL_loss
         get_OEL_loss = torch.nn.MSELoss()
-        positive_image_list = dataset.positive_image_list
+        if Config.module == 'LIO' or Config.module == 'OEL':
+            positive_image_list = dataset.positive_image_list
 
     start_time = time.time()
     model.train()
@@ -76,10 +75,11 @@ def train(Config,
             loss.backward()
             optimizer.step()
             exp_lr_scheduler.step()
-            current_lr = optimizer.param_groups[0]['lr']
-
+            
+            # for train log
             if step % 100 == 0:
                 elapsed_time = int(time.time() - start_time)
+                current_lr = optimizer.param_groups[0]['lr']
                 if Config.module == 'LIO':
                     train_log = f'epoch: {epoch} / {epoch_num} step: {step:-5d} / {train_epoch_step:d} loss: {loss.detach().item():6.4f}, OEL_loss: {OEL_loss.detach().item():6.4f}, SCL_loss: {SCL_loss.detach().item():6.4f} lr: {current_lr:0.8f} elapsed_time: {elapsed_time}'
                 elif Config.module == 'OEL':
@@ -92,15 +92,11 @@ def train(Config,
                 print(train_log)
                 with open(os.path.join(Config.exp_name, 'log.txt'), 'a') as log_file:
                     log_file.write(train_log + '\n')
-            rec_loss.append(loss.detach().item())
-            train_loss_recorder.update(loss.detach().item())
-
+            
         epoch += 1
 
-        # evaluation & save
-        # To see training progress, we also conduct evaluation when 'epoch==1'
+        # evaluation and save models. To see training progress, we also conduct evaluation when 'epoch==1'
         if epoch % save_per_epoch == 0 or epoch == 1:
-            rec_loss = []
             print(80 * '-')
             model.eval()
             test_acc1, test_acc2, test_acc3 = eval_turn(Config, model, data_loader['test'], 'test', epoch)
@@ -157,9 +153,9 @@ if __name__ == '__main__':
     cudnn.benchmark = True
     cudnn.deterministic = True
 
+    
+    """ dataset & dataloader """
     transformers = load_data_transformers(args.resize_resolution, args.crop_resolution)
-
-    # inital dataloader
     train_set = dataset(Config=Config,
                         anno=Config.train_anno,
                         common_aug=transformers["common_aug"],
@@ -192,25 +188,25 @@ if __name__ == '__main__':
     setattr(dataloader['test'], 'total_item_len', len(test_set))
     setattr(dataloader['test'], 'num_cls', Config.numcls)
 
-    print('train from imagenet pretrained models...')
+    print('Load imagenet pretrained model ResNet50')
     model = Model(Config)
     model = torch.nn.DataParallel(model).cuda()
     # print(model)
     with open(os.path.join(Config.exp_name, 'log.txt'), 'a') as log_file:
         log_file.write(repr(model) + '\n')
 
-    # optimizerprepare
+    # optimizer prepare
     optimizer = torch.optim.SGD(model.parameters(), lr=args.base_lr, momentum=0.9)
     # exp_lr_scheduler=torch.optim.lr_scheduler.StepLR(optimizer,step_size=args.decay_step,gamma=0.1)
 
-    # forsuperconvergencewithonecyclelearningrate
+    # for superconvergence with one cycle learning rate
     step_up_size = len(dataloader['train']) * args.epoch / 2
     step_down_size = len(dataloader['train']) * args.epoch / 2
     scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=args.base_lr, max_lr=args.base_lr * 10,
                                                   step_size_up=step_up_size, step_size_down=step_down_size,
                                                   cycle_momentum=False)
 
-    # trainentry
+    # train
     train(Config,
           model,
           epoch_num=args.epoch,
