@@ -49,7 +49,7 @@ def train(Config,
                 outputs, featuremap_7x7, oel_mask, scl_polar_coordinate = model(inputs)
                 cls_loss = get_cls_loss(outputs, labels)
                 pseudo_mask = OEL_make_pseudo_mask(model, featuremap_7x7.detach(), labels, positive_image_list)
-                OEL_loss = get_OEL_loss(oel_mask, pseudo_mask)
+                OEL_loss = get_OEL_loss(oel_mask, pseudo_mask)  # equation (4) in the paper
                 SCL_loss = get_SCL_loss(scl_polar_coordinate['pred'], scl_polar_coordinate['gt'], oel_mask.detach())
 
                 # equation (10) in the paper.
@@ -59,7 +59,7 @@ def train(Config,
                 outputs, featuremap_7x7, oel_mask = model(inputs)
                 cls_loss = get_cls_loss(outputs, labels)
                 pseudo_mask = OEL_make_pseudo_mask(model, featuremap_7x7.detach(), labels, positive_image_list)
-                OEL_loss = get_OEL_loss(oel_mask, pseudo_mask)
+                OEL_loss = get_OEL_loss(oel_mask, pseudo_mask)  # equation (4) in the paper
                 loss = cls_loss + 0.1 * OEL_loss
 
             elif Config.module == 'SCL':

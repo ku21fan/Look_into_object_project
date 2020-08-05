@@ -63,7 +63,7 @@ class Model(nn.Module):
         featuremap_h = self.SCL_conv(featuremap)  # N, C, H, W
 
         """ find R0 following to equation (6) then concat channels where R0 index
-        1) change 2D coordinates (h, w) -> 1D (h*w).
+        1) change 2D coordinates (h, w) -> 1D (h*w) to use torch.max() and find feature where R0 index easily.
         2) find argmax coordinate for each mask.
         3) then change back change 1D coordinates (h*w) -> 2D (h, w).
         """
@@ -118,43 +118,38 @@ def OEL_make_pseudo_mask(model, featuremap_7x7, label_list, positive_image_list,
             positive_image_list[label.item()], positive_image_number), dim=0)
         sampled_positive_image_list.append(sampled_positive_image)
 
-    print(len(sampled_positive_image_list))
     # N * [positive_image_number, C, H, W] -> [N*positive_image_number, C, H, W]
     positive_images = torch.cat(sampled_positive_image_list, dim=0)
-    print('pi', positive_images.size())
+    # print('pi', positive_images.size())
 
     with torch.no_grad():
         """ 
-        1) change 2D coordinates (h, w) -> 1D (h*w).
-        2) calculate in each coordinates.
+        1) change 2D coordinates (h, w) -> 1D (h*w) to use torch.bmm and torch.max easily.
+        2) calculate for each coordinates.
         3) then change back change 1D coordinates (h*w) -> 2D (h, w).
         """
         N, C, H, W = featuremap_7x7.size()
         featuremap_7x7_1D = featuremap_7x7.view(N, C, H * W)
-        print('featuremap_7x7', featuremap_7x7.size(), featuremap_7x7_1D.size())
-
+        
         # To use for loop, change [N*positive_image_number, C, H, W] -> [positive_image_number, N, C, H, W]
         positive_image_featuremap_7x7 = model(positive_images, get_featuremap_7x7=True)
         positive_image_featuremap_7x7 = positive_image_featuremap_7x7.unsqueeze(
             0).view(positive_image_number, N, C, H, W)
-        print(positive_image_featuremap_7x7, positive_image_featuremap_7x7.size())
-
+        
         phi = []
         for pos_img_7x7 in positive_image_featuremap_7x7:
-            bp()
             pos_img_7x7_1D = pos_img_7x7.view(N, C, H * W)
-            print('pos7x7', pos_img_7x7_1D.size(), pos_img_7x7.size())
-
-            # equation (2) in the paper
-            # matmul ([N, H*W, C], [N, C, H*W]) = [N, H*W, H*W]
-            dot_product = torch.bmm(featuremap_7x7_1D, pos_img_7x7_1D)
+            
+            # equation (2) in the paper. matmul ([N, H*W, C], [N, C, H*W]) = [N, H*W, H*W] for calculate correlation.
+            dot_product = torch.bmm(featuremap_7x7_1D.permute(0, 2, 1), pos_img_7x7_1D)
             phi.append(torch.max(dot_product, dim=2)[0] / C)  # [N, H*W]
-            print('dot, phi', dot_product.size(), torch.max(dot_product, dim=2)[0].size())
+            # print('dot, phi', dot_product.size(), torch.max(dot_product, dim=2)[0].size())
 
         # equation (3) in the paper
-        phi_1D = torch.mean(torch.cat(phi, dim=0), dim=0)  # [N, H*W]
-        pseudo_mask = torch.view(phi_1D, (H, W))  # [N, H, W]
-        print('phi1D, pseudo_mask', phi_1D.size(), pseudo_mask.size())
+        phi_1D = torch.mean(torch.stack(phi, dim=0), dim=0)  # [positive_image_number, N, H*W] -> [N, H*W]
+        pseudo_mask = phi_1D.view(N, H, W)  # [N, H, W]
+        pseudo_mask = pseudo_mask.unsqueeze(1) # [N, C, H, W] (C=1)
+        # print('phi1D, pseudo_mask', phi_1D.size(), pseudo_mask.size())
 
     model.train()
     return pseudo_mask
